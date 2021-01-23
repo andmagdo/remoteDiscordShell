@@ -1,5 +1,5 @@
 # Fork of remoteDiscordShell:
-I have made (with my spaghetti code) this bot more windows-compatable, more discord compatible (via splitting messages with more than 2 lines into ~2000 line clumps), and have made it assume by default the executed directory contains the files, allowing one to cd w/o using absolute locations 
+I have made (with my spaghetti code) this bot more windows-compatable (do note that -c on windows for ping doesnt work), more discord compatible (via splitting messages with more than 2 lines into ~2000 line clumps), and have made it assume by default the executed directory contains the files, allowing one to cd w/o using absolute locations 
 
 # remoteDiscordShell
 remoteDiscordShell is a remote shell for Linux that makes use of Discord's conection to send commands and receive messages from the computer. It has an user login system and root restriction in order to avoid malicious connections from other Discord users. _"discord"_ module is needed. This tool is specially useful if you want to connect to a computer that is behind a private network without opening ports or just want to control your computer through Discord, without using any other ssh client.
