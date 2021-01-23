@@ -6,43 +6,49 @@ import hashlib
 import time
 import discord
 import requests
+from inspect import getsourcefile
+import textwrap
 
+print(os.path.dirname(os.path.abspath(getsourcefile(lambda: 0))))
 
 __author__ = "EnriqueMoran"
 
 __version__ = "v0.0.3"
-
-
-TOKEN = None
+slashType = "\\"
+# slashType = "/"
+# LOCATIONOVERRIDE detects running location
+LOCATIONOVERRIDE = os.getcwd() + slashType
+shareInStart = True
 VERSION = None
-PASSWORD = None
-USERS = None    # users.txt path
-LOG = None    # log.txt path
-LOGLINES = 0    # Current lines of log.txt
-SHAREFOLDER = None    # Shared files storage folder path
-LOGLIMIT = None    # Max number of lines to register in log
-GUILD = None    # Server's name
-INGUILD = False    # Is this bot running in configured server?
-USERSLOGIN = []    # List of users id waiting for pass to be added
-USERSUPDATE = []   # List of users id waiting to update system's response
-USERSUPGRADE = []   # List of users id waiting to upgrade system's response
-USERSINSTALL = []   # List of users id waiting to install a package
-USERSUNINSTALL = []   # List of users id waiting to uninstall a package
+USERS = "users.txt"  # users.txt path
+LOG = "log.txt"  # log.txt path
+LOGLINES = 0  # Current lines of log.txt
+SHAREFOLDER = None  # Shared files storage folder path
+LOGLIMIT = None  # Max number of lines to register in log
+GUILD = None  # Server's name
+INGUILD = False  # Is this bot running in configured server?
+USERSLOGIN = []  # List of users id waiting for pass to be added
+USERSUPDATE = []  # List of users id waiting to update system's response
+USERSUPGRADE = []  # List of users id waiting to upgrade system's response
+USERSINSTALL = []  # List of users id waiting to install a package
+USERSUNINSTALL = []  # List of users id waiting to uninstall a package
 AVALIABLECOMMANDS = [
     "/start", "/update", "/upgrade", "/install", "/uninstall", "/forbidden",
     "/help"
-    ]
+]
 FORBIDDENCOMMANDS = [
     "wait", "exit", "clear", "aptitude", "raspi-config",
     "nano", "dc", "htop", "ex", "expand", "vim", "man", "apt-get", "poweroff",
-    "reboot", "ssh", "scp", "wc", "vi"
-    ]    # non working commands due to API error or output eror
+    "reboot", "ssh", "scp", "wc", "vi", "apt", "powershell", "cmd", "ping"
+]  # non working commands due to API error or output eror
 
 
 def load_config(configFile):
     global VERSION, TOKEN, PASSWORD, USERS, LOG, LOGLIMIT, ROOT, \
         SHAREFOLDER, LOGLINES, GUILD, INGUILD
-
+    if LOCATIONOVERRIDE:
+        configFile = LOCATIONOVERRIDE + configFile
+    print(configFile)
     file = open(configFile, "r")
     lines = file.read().splitlines()
     cont = 0
@@ -79,9 +85,14 @@ def load_config(configFile):
         if line[:1] == "#":
             cont += 1
             read = True
+    LOG = LOCATIONOVERRIDE + LOG
+    USERS = LOCATIONOVERRIDE + USERS
+    if shareInStart:
+        SHAREFOLDER = LOCATIONOVERRIDE + SHAREFOLDER
 
-config_path = os.getcwd() + "/config.txt"
-load_config(config_path)
+
+raw_config_path = "config.txt"
+load_config(raw_config_path)
 
 f1 = open(LOG, "a+")
 f1.close
@@ -129,20 +140,20 @@ async def check_config(message):
     return await error
 
 
-def in_guild(func):    # Check if bot is in configured server
+def in_guild(func):  # Check if bot is in configured server
     def wrapper(*args, **kwargs):
         if INGUILD:
             return func(*args, **kwargs)
         return wrapper
 
 
-def encrypt(id):    # Cipher users.txt content using SHA256
+def encrypt(id):  # Cipher users.txt content using SHA256
     m = hashlib.sha256()
     m.update(str(id).encode())
     return m.hexdigest()
 
 
-def register(user):    # Register user and allow him to access
+def register(user):  # Register user and allow him to access
     encrypted_user = encrypt(user)
     f = open(USERS, "a+")
     content = f.readlines()
@@ -152,7 +163,7 @@ def register(user):    # Register user and allow him to access
     f.close
 
 
-def check_user_login(login):    # Check if user ID is on users.txt
+def check_user_login(login):  # Check if user ID is on users.txt
     encrypted_login = encrypt(login)
     check = False
     with open(USERS) as f:
@@ -163,7 +174,7 @@ def check_user_login(login):    # Check if user ID is on users.txt
     return check
 
 
-def register_log(message):    # Register message in log.txt
+def register_log(message):  # Register message in log.txt
     global LOGLIMIT, LOG, LOGLINES
     LOGLINES += 1
     with open(LOG, 'a+') as f:
@@ -245,7 +256,7 @@ async def installPackage(message):
         proc.wait()
 
         if already_installed:
-                    return    # Dont send any message
+            return  # Dont send any message
         if proc.poll() == 0:
             await message.channel.send(f"Package {message.content} " +
                                        "sucessfully installed.")
@@ -279,7 +290,7 @@ async def removePackage(message):
         proc.wait()
 
         if already_removed:
-                    return    # Dont send any message
+            return  # Dont send any message
         if proc.poll() == 0:
             await message.channel.send(f"Package {message.content} " +
                                        "sucessfully removed.")
@@ -303,15 +314,10 @@ async def show_forbidden_commands(message):
 
 async def show_help(message):
     global VERSION
-    message_one = "Current version: " + VERSION
-    message_two = "Welcome to remoteDiscordShell, this bot allows users " + \
-        "to remotely control a computer terminal. Current commands: "
+    message_one = "Current version: " + VERSION + "\n" + "Welcome to remoteDiscordShell, this bot allows users " + \
+                  "to remotely control a computer terminal. Current commands: \n" + \
+                  ", ".join(AVALIABLECOMMANDS)
     await message.channel.send(message_one)
-    await message.channel.send(message_two)
-    res = ""
-    for element in AVALIABLECOMMANDS:
-        res += element + ", "
-    await message.channel.send(res[:-2])
 
 
 @client.event
@@ -335,9 +341,9 @@ async def on_message(message):
 
     register_log(message)
 
-    if message.author.id in USERSLOGIN:    # User must add password to access
+    if message.author.id in USERSLOGIN:  # User must add password to access
         if message.content == PASSWORD:
-            register(message.author.id)    # Grant access to user
+            register(message.author.id)  # Grant access to user
             USERSLOGIN.remove(message.author.id)
             response = "Logged in, you can use commands now."
             await message.author.dm_channel.send(response)
@@ -351,7 +357,7 @@ async def on_message(message):
         return
 
     if message.author.id in USERSUPDATE:
-        # User must reply wether update system or not
+        # User must reply whether update system or not
         if message.content.lower() == 'yes':
             USERSUPDATE.remove(message.author.id)
             response = "System updating..."
@@ -367,7 +373,7 @@ async def on_message(message):
         return
 
     if message.author.id in USERSUPGRADE:
-        # User must reply wether upgrade system or not
+        # User must reply whether upgrade system or not
         if message.content.lower() == 'yes':
             USERSUPGRADE.remove(message.author.id)
             response = "System upgrading..."
@@ -415,48 +421,50 @@ async def on_message(message):
             await removePackage(message)
         return
 
-    if len(message.attachments) > 0:    # A file is sent
-        file_path = SHAREFOLDER + message.attachments[0].filename
-        r = requests.get(message.attachments[0].url)
-        with open(file_path, 'wb') as file:
-            file.write(r.content)
-        await message.channel.send(f"File saved as {file_path}")
+    if len(message.attachments) > 0:  # A file is sent
+        attachments = 0
+        for _ in message.attachments:
+            file_path = SHAREFOLDER + message.attachments[attachments].filename
+            r = requests.get(message.attachments[attachments].url)
+            with open(file_path, 'wb') as file:
+                file.write(r.content)
+            await message.channel.send(f"File saved as {file_path}")
 
     else:
-        if message.content.lower() == '/start':    # TODO: TMP welcome message
+        if message.content.lower() == '/start':  # TODO: TMP welcome message
             welcome_one = "Welcome to discordShell, this bot allows " + \
                           "you to remotely control a computer terminal."
             welcome_two = "List of avaliable commands: \n- To " + \
-                "install packages use /install \n- To update system " + \
-                "use /update \n- To upgrade system use /upgrade \n- To " + \
-                "view forbidden commands use /forbidden."
+                          "install packages use /install \n- To update system " + \
+                          "use /update \n- To upgrade system use /upgrade \n- To " + \
+                          "view forbidden commands use /forbidden."
             welcome_three = "You can send files to the computer, " + \
-                "also download them by using getfile + path (e.g. getfile" + \
-                " /home/user/Desktop/file.txt)."
+                            "also download them by using getfile + path (e.g. getfile" + \
+                            " /home/user/Desktop/file.txt)."
             await message.channel.send(f"Current version: {VERSION}")
             await message.channel.send(welcome_one)
             await message.channel.send(welcome_two)
             await message.channel.send(welcome_three)
-        elif message.content.lower() == '/update':    # Update system
+        elif message.content.lower() == '/update':  # Update system
             await message.channel.send("Update system? (Write yes/no): ")
             USERSUPDATE.append(message.author.id)  # Waiting for response
-        elif message.content.lower() == '/upgrade':    # Upgrade system
+        elif message.content.lower() == '/upgrade':  # Upgrade system
             await message.channel.send("Upgrade system? (Write yes/no): ")
             USERSUPGRADE.append(message.author.id)  # Waiting for response
-        elif message.content.lower() == '/install':    # Install package
+        elif message.content.lower() == '/install':  # Install package
             await message.channel.send("Write package name to install or " +
                                        "'cancel' to exit: ")
             USERSINSTALL.append(message.author.id)  # Waiting for response
-        elif message.content.lower() == '/uninstall':    # Remove package
+        elif message.content.lower() == '/uninstall':  # Remove package
             await message.channel.send("Write package name to uninstall or " +
                                        "'cancel' to exit: ")
             USERSUNINSTALL.append(message.author.id)  # Waiting for response
-        elif message.content.lower() == '/forbidden':    # Forbidden commands
+        elif message.content.lower() == '/forbidden':  # Forbidden commands
             await message.channel.send("Currently forbidden commands:")
             await show_forbidden_commands(message)
-        elif message.content.lower() == '/help':    # Show help message
+        elif message.content.lower() == '/help':  # Show help message
             await show_help(message)
-        else:    # Linux command
+        else:  # Linux command
             if message.content[0:2] == 'cd':
                 try:
                     os.chdir(message.content[3:])
@@ -470,31 +478,6 @@ async def on_message(message):
 
             elif message.content[0:4] == "sudo" and not ROOT:
                 await message.channel.send("root commands are disabled.")
-
-            elif (
-                    message.content[0:4] == "ping" and
-                    len(message.content.split()) == 2
-                 ):
-                ip = str(message.content).split()[1]
-                com = "ping " + str(ip) + " -c 4"    # Infinite ping fix
-                try:
-                    p = subprocess.Popen(com, stdout=subprocess.PIPE,
-                                         shell=True, cwd=os.getcwd(),
-                                         bufsize=1)
-                    for line in iter(p.stdout.readline, b''):
-                        try:
-                            await message.channel.send(line.decode('utf-8'))
-                        except:
-                            pass
-                    p.communicate()
-                    if p.returncode != 0:
-                        await message.channel.send(" Name or " +
-                                                   "service not known")
-                except Exception as e:
-                    error = "Error ocurred: " + str(e)
-                    errorType = "Error type: " + str((e.__class__.__name__))
-                    await message.channel.send(str(error))
-                    await message.channel.send(str(errorType))
 
             elif message.content[0:3] == "top":
                 try:
@@ -524,6 +507,31 @@ async def on_message(message):
                     errorType = "Error type: " + str((e.__class__.__name__))
                     await message.channel.send(str(error))
                     await message.channel.send(str(errorType))
+            
+            elif (
+                    message.content[0:4] == "ping" and
+                    len(message.content.split()) == 2
+                 ):
+                ip = str(message.content).split()[1]
+                com = "ping " + str(ip) + " -c 4"    # Infinite ping fix
+                try:
+                    p = subprocess.Popen(com, stdout=subprocess.PIPE,
+                                         shell=True, cwd=os.getcwd(),
+                                         bufsize=1)
+                    for line in iter(p.stdout.readline, b''):
+                        try:
+                            await message.channel.send(line.decode('utf-8'))
+                        except:
+                            pass
+                    p.communicate()
+                    if p.returncode != 0:
+                        await message.channel.send(" Name or " +
+                                                   "service not known")
+                except Exception as e:
+                    error = "Error ocurred: " + str(e)
+                    errorType = "Error type: " + str((e.__class__.__name__))
+                    await message.channel.send(str(error))
+                    await message.channel.send(str(errorType))
 
             elif message.content[0:7] == "getfile":
                 file_path = os.path.join(message.content[7:].strip())
@@ -540,6 +548,39 @@ async def on_message(message):
                                          stdout=subprocess.PIPE,
                                          shell=True, cwd=os.getcwd(),
                                          bufsize=1)
+
+                    lines = []
+                    for line in iter(p.stdout.readline, b''):
+                        try:
+                            lines.append(line.decode('utf-8'))
+                        except Exception as e:
+                            try:
+                                lines.append(str(e))
+                            except:
+                                pass
+                    if len(lines) > 2:
+                        lineString = "\0".join(lines)
+                        if len(lineString) > 1980:
+                            await message.channel.send(
+                                "Message output larger than discord's limit, cutting into 2000 character clumps")
+                            x = list(textwrap.fill(lineString, 1980).split("\n"))
+                            for y in x:
+                                try:
+                                    z = y.replace("\0", "\n")
+                                    await message.channel.send(str(z))
+                                except Exception as n:
+                                        await message.channel.send("Error sending message: " + n)
+                        else:
+                            await message.channel.send(lineString)
+                    elif len(lines) <= 0:
+                        await message.channel.send("܁")
+                    else:
+                        for line in lines:
+                            try:
+                                await message.channel.send(line)
+                            except:
+                                pass
+
                     for line in iter(p.stdout.readline, b''):
                         decoded = line.decode('windows-1252').strip()
                         if len(re.sub('[^A-Za-z0-9]+', '', decoded)) <= 0:
@@ -556,11 +597,11 @@ async def on_message(message):
                     p.wait()
                     if p.returncode != 0:
                         pass
-                except Exception as e:
-                    error = "Error: Command not found"
+                except FileNotFoundError as e:
+                    # todo replace ^ w/ exception
+                    error = "Error: Command not found " + str(e)
                     await message.channel.send(error)
     return
 
 
-if __name__ == "__main__":
-    client.run(TOKEN)
+client.run(TOKEN)
