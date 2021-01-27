@@ -20,6 +20,7 @@ slashType = "\\"
 LOCATIONOVERRIDE = os.getcwd() + slashType
 shareInStart = True
 VERSION = None
+Reboot = True
 USERS = "users.txt"  # users.txt path
 LOG = "log.txt"  # log.txt path
 LOGLINES = 0  # Current lines of log.txt
@@ -32,15 +33,17 @@ USERSUPDATE = []  # List of users id waiting to update system's response
 USERSUPGRADE = []  # List of users id waiting to upgrade system's response
 USERSINSTALL = []  # List of users id waiting to install a package
 USERSUNINSTALL = []  # List of users id waiting to uninstall a package
+USERSREBOOT = [] # List of users id waiting to reboot, cleared after 5 messages
+rebootTime = 0
 AVALIABLECOMMANDS = [
     "/start", "/update", "/upgrade", "/install", "/uninstall", "/forbidden",
-    "/help"
+    "/help", "/reboot"
 ]
 FORBIDDENCOMMANDS = [
     "wait", "exit", "clear", "aptitude", "raspi-config",
     "nano", "dc", "htop", "ex", "expand", "vim", "man", "apt-get", "poweroff",
     "reboot", "ssh", "scp", "wc", "vi", "apt", "powershell", "cmd", "ping"
-]  # non working commands due to API error or output eror
+]  # non working commands due to API error or output error
 
 
 def load_config(configFile):
@@ -238,6 +241,28 @@ async def upgradeSystem(message):
         await message.channel.send(str(errorType))
 
 
+async def reboot(message):
+    try:
+        proc = subprocess.Popen('systemctl reboot -i', shell=True,
+                                stdin=None, stdout=subprocess.PIPE,
+                                executable="/bin/bash")
+        while True:
+            output = proc.stdout.readline()
+            if output == b'' and proc.poll() is not None:
+                break
+            if output:
+                await message.channel.send(output.decode('utf-8'))
+        proc.wait()
+        if proc.poll() == 0:
+            await message.channel.send("System rebooted sucessfully.")
+        else:
+            await message.channel.send("System not rebooted" +
+                                       ", error code: " + str(proc.poll()))
+    except Exception as e:
+        error = "Error ocurred: " + str(e) + "\nError type: " + str((e.__class__.__name__))
+        await message.channel.send(str(error))
+
+
 async def installPackage(message):
     try:
         proc = subprocess.Popen('sudo apt-get install -y ' + message.content,
@@ -335,11 +360,21 @@ async def on_ready():
 @client.event
 async def on_message(message):
     global USERSLOGIN, VERSION, FORBIDDENCOMMANDS, ROOT, USERSUPDATE, \
-        USERSUPGRADE, USERSINSTALL, USERSUNINSTALL
+        USERSUPGRADE, USERSINSTALL, USERSUNINSTALL, rebootTime, USERSREBOOT
     if message.author == client.user:
         return
 
     register_log(message)
+    if not rebootTime == 0:
+        if message.author.id in USERSREBOOT and message.content.lower() == 'yes':
+            USERSREBOOT = []
+            rebootTime = 0
+            await reboot(message)
+        elif rebootTime >= 5 or (message.content.lower() == 'no' and message.author.id in USERSREBOOT):
+            USERSREBOOT = []
+            rebootTime = 0
+        else:
+            rebootTime = rebootTime + 1
 
     if message.author.id in USERSLOGIN:  # User must add password to access
         if message.content == PASSWORD:
@@ -436,8 +471,9 @@ async def on_message(message):
                           "you to remotely control a computer terminal."
             welcome_two = "List of avaliable commands: \n- To " + \
                           "install packages use /install \n- To update system " + \
-                          "use /update \n- To upgrade system use /upgrade \n- To " + \
-                          "view forbidden commands use /forbidden."
+                          "use /update \n- To upgrade system use /upgrade" \
+                          "To reboot system, use /reboot\n" \
+                          "- To view forbidden commands use /forbidden."
             welcome_three = "You can send files to the computer, " + \
                             "also download them by using getfile + path (e.g. getfile" + \
                             " /home/user/Desktop/file.txt)."
@@ -451,6 +487,13 @@ async def on_message(message):
         elif message.content.lower() == '/upgrade':  # Upgrade system
             await message.channel.send("Upgrade system? (Write yes/no): ")
             USERSUPGRADE.append(message.author.id)  # Waiting for response
+        elif message.content.lower() == '/reboot':  # Reboot system
+            if Reboot:
+                await message.channel.send("Reboot system? (Write yes/no): ")
+                USERSREBOOT.append(message.author.id)  # Waiting for response
+                rebootTime = 1
+            else:
+                await message.channel.send("Rebooting has been disabled ")
         elif message.content.lower() == '/install':  # Install package
             await message.channel.send("Write package name to install or " +
                                        "'cancel' to exit: ")
@@ -507,13 +550,22 @@ async def on_message(message):
                     errorType = "Error type: " + str((e.__class__.__name__))
                     await message.channel.send(str(error))
                     await message.channel.send(str(errorType))
-            
+
+            elif message.content[0:7] == "getfile":
+                file_path = os.path.join(message.content[7:].strip())
+                if os.path.isfile(file_path):
+                    await message.channel.send("Sending file.")
+                    file = discord.File(file_path)
+                    await message.channel.send(files=[file])
+                else:
+                    await message.channel.send("File doesn't exists.")
+
             elif (
                     message.content[0:4] == "ping" and
                     len(message.content.split()) == 2
-                 ):
+            ):
                 ip = str(message.content).split()[1]
-                com = "ping " + str(ip) + " -c 4"    # Infinite ping fix
+                com = "ping " + str(ip) + " -c 4"  # Infinite ping fix
                 try:
                     p = subprocess.Popen(com, stdout=subprocess.PIPE,
                                          shell=True, cwd=os.getcwd(),
@@ -532,15 +584,6 @@ async def on_message(message):
                     errorType = "Error type: " + str((e.__class__.__name__))
                     await message.channel.send(str(error))
                     await message.channel.send(str(errorType))
-
-            elif message.content[0:7] == "getfile":
-                file_path = os.path.join(message.content[7:].strip())
-                if os.path.isfile(file_path):
-                    await message.channel.send("Sending file.")
-                    file = discord.File(file_path)
-                    await message.channel.send(files=[file])
-                else:
-                    await message.channel.send("File doesn't exists.")
 
             else:
                 try:
@@ -569,7 +612,7 @@ async def on_message(message):
                                     z = y.replace("\0", "\n")
                                     await message.channel.send(str(z))
                                 except Exception as n:
-                                        await message.channel.send("Error sending message: " + n)
+                                    await message.channel.send("Error sending message: " + n)
                         else:
                             await message.channel.send(lineString)
                     elif len(lines) <= 0:
