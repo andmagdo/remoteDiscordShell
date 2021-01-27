@@ -508,6 +508,8 @@ async def on_message(message):
         elif message.content.lower() == '/help':  # Show help message
             await show_help(message)
         else:  # Linux command
+            if message.content.lower == 'yes':
+                return
             if message.content[0:2] == 'cd':
                 try:
                     os.chdir(message.content[3:])
