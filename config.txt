@@ -14,8 +14,8 @@ version = v0.0.3
 token = 
 
 
-# GUILD id, better than name because it always is the same
-# Changed from guild name, I don't understand exactly how this config works
+# GUILD name, needs to be changed after every name change
+# Reverting my change to id for simplicity's sake
 guildName = 
 
 
