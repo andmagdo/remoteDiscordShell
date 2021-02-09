@@ -14,8 +14,8 @@ version = v0.0.3
 token = 
 
 
-# GUILD name - Server's name. If you modify your server's name, the change must be done
-# in this file too.
+# GUILD id, better than name because it always is the same
+# Changed from guild name, I don't understand exactly how this config works
 guildName = 
 
 
