@@ -25,6 +25,7 @@ There is a set of special commands for specific actions such update or upgrade t
 - **/install:** Ask for a package and install it (might need root permission).
 - **/uninstall:** Ask for a package, then remove and purge it (migth need root permission).
 - **/forbidden:** Show forbidden command list.
+- **/killall** To kill **ALL** child processes
 - **/help:** Show useful information about this bot.
 
 
