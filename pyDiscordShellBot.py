@@ -8,14 +8,27 @@ import discord
 import requests
 from inspect import getsourcefile
 import textwrap
+import psutil
 
 print(os.path.dirname(os.path.abspath(getsourcefile(lambda: 0))))
 
 __author__ = "EnriqueMoran"
 
 __version__ = "v0.0.3"
-slashType = "\\"
-# slashType = "/"
+
+if os.name == 'nt':
+    slashType = "\\"
+    print('Nt/Windows found, using \\')
+    pingFlag = 'n'
+elif os.name == 'posix':
+    print('Posix based OS (probably linux) found, using /')
+    slashType = "/"
+    pingFlag = 'c'
+else:
+    print('Unknown OS, defaulting to /')
+    slashType = "/"
+    pingFlag = 'c'
+
 # LOCATIONOVERRIDE detects running location
 LOCATIONOVERRIDE = os.getcwd() + slashType
 shareInStart = True
@@ -27,22 +40,26 @@ LOGLINES = 0  # Current lines of log.txt
 SHAREFOLDER = None  # Shared files storage folder path
 LOGLIMIT = None  # Max number of lines to register in log
 GUILD = None  # Server's name
+TOKEN = None
+PASSWORD = None
+ROOT = None
+guildID = None
 INGUILD = False  # Is this bot running in configured server?
 USERSLOGIN = []  # List of users id waiting for pass to be added
 USERSUPDATE = []  # List of users id waiting to update system's response
 USERSUPGRADE = []  # List of users id waiting to upgrade system's response
 USERSINSTALL = []  # List of users id waiting to install a package
 USERSUNINSTALL = []  # List of users id waiting to uninstall a package
-USERSREBOOT = [] # List of users id waiting to reboot, cleared after 5 messages
+USERSREBOOT = []  # List of users id waiting to reboot, cleared after 5 messages
 rebootTime = 0
 AVALIABLECOMMANDS = [
     "/start", "/update", "/upgrade", "/install", "/uninstall", "/forbidden",
-    "/help", "/reboot"
+    "/help", "/reboot", "/killall"
 ]
 FORBIDDENCOMMANDS = [
     "wait", "exit", "clear", "aptitude", "raspi-config",
     "nano", "dc", "htop", "ex", "expand", "vim", "man", "apt-get", "poweroff",
-    "reboot", "ssh", "scp", "wc", "vi", "apt", "powershell", "cmd", "ping"
+    "reboot", "ssh", "scp", "wc", "vi", "apt", "powershell", "cmd"
 ]  # non working commands due to API error or output error
 
 
@@ -140,7 +157,7 @@ async def check_config(message):
         error_msg += "\n- Root field is empty."
     if error:
         await message.channel.send(error_msg)
-    return await error
+    return error
 
 
 def in_guild(func):  # Check if bot is in configured server
@@ -150,27 +167,27 @@ def in_guild(func):  # Check if bot is in configured server
         return wrapper
 
 
-def encrypt(id):  # Cipher users.txt content using SHA256
+def encrypt(uid):  # Cipher users.txt content using SHA256
     m = hashlib.sha256()
-    m.update(str(id).encode())
+    m.update(str(uid).encode())
     return m.hexdigest()
 
 
 def register(user):  # Register user and allow him to access
     encrypted_user = encrypt(user)
-    f = open(USERS, "a+")
-    content = f.readlines()
+    file = open(USERS, "a+")
+    content = file.readlines()
     content = [x.strip() for x in content]
     if encrypted_user not in content:
         f.write(str(encrypted_user) + "\n")
-    f.close
+    file.close
 
 
 def check_user_login(login):  # Check if user ID is on users.txt
     encrypted_login = encrypt(login)
     check = False
-    with open(USERS) as f:
-        content = f.readlines()
+    with open(USERS) as file:
+        content = file.readlines()
         content = [x.strip() for x in content]
         if encrypted_login in content:
             check = True
@@ -180,15 +197,15 @@ def check_user_login(login):  # Check if user ID is on users.txt
 def register_log(message):  # Register message in log.txt
     global LOGLIMIT, LOG, LOGLINES
     LOGLINES += 1
-    with open(LOG, 'a+') as f:
+    with open(LOG, 'a+') as file:
         now = datetime.datetime.now().strftime("%m-%d-%y %H:%M:%S ")
-        f.write(now + "[" + str(message.author.name) + " (" +
-                str(message.author.id) + ")]: " + str(message.content) + "\n")
-    if LOGLIMIT > 0 and LOGLINES > LOGLIMIT:
-        with open(LOG) as f:
-            lines = f.read().splitlines(True)
-        with open(LOG, 'w+') as f:
-            f.writelines(lines[abs(LOGLINES - LOGLIMIT):])
+        file.write(now + "[" + str(message.author.name) + " (" + str(message.author.id) + ")]: " +
+                   str(message.content) + "\n")
+    if 0 < LOGLIMIT < LOGLINES:
+        with open(LOG) as file:
+            lines = file.read().splitlines(True)
+        with open(LOG, 'w+') as file:
+            file.writelines(lines[abs(LOGLINES - LOGLIMIT):])
 
 
 async def updateSystem(message):
@@ -211,7 +228,19 @@ async def updateSystem(message):
                                        ", error code: " + str(proc.poll()))
     except Exception as e:
         error = "Error ocurred: " + str(e)
-        errorType = "Error type: " + str((e.__class__.__name__))
+        errorType = "Error type: " + str(e.__class__.__name__)
+        await message.channel.send(str(error))
+        await message.channel.send(str(errorType))
+
+
+async def killAll(message):
+    try:
+        me = psutil.Process(os.getpid())
+        for child in me.children():
+            child.kill()
+    except Exception as e:
+        error = "Error ocurred: " + str(e)
+        errorType = "Error type: " + str(e.__class__.__name__)
         await message.channel.send(str(error))
         await message.channel.send(str(errorType))
 
@@ -236,7 +265,7 @@ async def upgradeSystem(message):
                                        ", error code: " + str(proc.poll()))
     except Exception as e:
         error = "Error ocurred: " + str(e)
-        errorType = "Error type: " + str((e.__class__.__name__))
+        errorType = "Error type: " + str(e.__class__.__name__)
         await message.channel.send(str(error))
         await message.channel.send(str(errorType))
 
@@ -259,7 +288,7 @@ async def reboot(message):
             await message.channel.send("System not rebooted" +
                                        ", error code: " + str(proc.poll()))
     except Exception as e:
-        error = "Error ocurred: " + str(e) + "\nError type: " + str((e.__class__.__name__))
+        error = "Error ocurred: " + str(e) + "\nError type: " + str(e.__class__.__name__)
         await message.channel.send(str(error))
 
 
@@ -291,7 +320,7 @@ async def installPackage(message):
                                        str(proc.poll()))
     except Exception as e:
         error = "Error ocurred: " + str(e)
-        errorType = "Error type: " + str((e.__class__.__name__))
+        errorType = "Error type: " + str(e.__class__.__name__)
         await message.channel.send(str(error))
         await message.channel.send(str(errorType))
 
@@ -325,7 +354,7 @@ async def removePackage(message):
                                        str(proc.poll()))
     except Exception as e:
         error = "Error ocurred: " + str(e)
-        errorType = "Error type: " + str((e.__class__.__name__))
+        errorType = "Error type: " + str(e.__class__.__name__)
         await message.channel.send(str(error))
         await message.channel.send(str(errorType))
 
@@ -347,20 +376,35 @@ async def show_help(message):
 
 @client.event
 async def on_ready():
-    global TOKEN, GUILD, INGUILD
-    guild = discord.utils.get(client.guilds, name=GUILD)
-    if guild:
-        INGUILD = True
-        print("Server found! running...")
-        return
-    print("No server found... Press ctrl+c to exit.")
+    global TOKEN, GUILD, INGUILD, guildID
+
+    guild = discord.utils.get(client.guilds, id=GUILD)
+    discord.utils.get(client.guilds)
+    number = 0
+    for guilds in client.guilds:
+
+        if f'{GUILD}' == f'{guilds}':
+            INGUILD = True
+            print("Server found! running...")
+            guildID = client.guilds[number].id
+            return
+    if INGUILD:
+        print("No server found... Press ctrl+c to exit.")
 
 
 @in_guild
 @client.event
 async def on_message(message):
     global USERSLOGIN, VERSION, FORBIDDENCOMMANDS, ROOT, USERSUPDATE, \
-        USERSUPGRADE, USERSINSTALL, USERSUNINSTALL, rebootTime, USERSREBOOT
+        USERSUPGRADE, USERSINSTALL, USERSUNINSTALL, rebootTime, \
+        USERSREBOOT, guildID
+
+    if message.author.bot:
+        return
+
+    if message.guild.id != guildID:
+        return
+
     if message.author == client.user:
         return
 
@@ -459,7 +503,7 @@ async def on_message(message):
     if len(message.attachments) > 0:  # A file is sent
         attachments = 0
         for _ in message.attachments:
-            file_path = SHAREFOLDER + message.attachments[attachments].filename
+            file_path = f'{SHAREFOLDER}' + message.attachments[attachments].filename
             r = requests.get(message.attachments[attachments].url)
             with open(file_path, 'wb') as file:
                 file.write(r.content)
@@ -473,6 +517,7 @@ async def on_message(message):
                           "install packages use /install \n- To update system " + \
                           "use /update \n- To upgrade system use /upgrade" \
                           "To reboot system, use /reboot\n" \
+                          "To kill **ALL** processes, use /killall \n" \
                           "- To view forbidden commands use /forbidden."
             welcome_three = "You can send files to the computer, " + \
                             "also download them by using getfile + path (e.g. getfile" + \
@@ -487,6 +532,8 @@ async def on_message(message):
         elif message.content.lower() == '/upgrade':  # Upgrade system
             await message.channel.send("Upgrade system? (Write yes/no): ")
             USERSUPGRADE.append(message.author.id)  # Waiting for response
+        elif message.content.lower() == '/killall':
+            await killAll(message)
         elif message.content.lower() == '/reboot':  # Reboot system
             if Reboot:
                 await message.channel.send("Reboot system? (Write yes/no): ")
@@ -508,8 +555,6 @@ async def on_message(message):
         elif message.content.lower() == '/help':  # Show help message
             await show_help(message)
         else:  # Linux command
-            if message.content.lower == 'yes':
-                return
             if message.content[0:2] == 'cd':
                 try:
                     os.chdir(message.content[3:])
@@ -549,7 +594,7 @@ async def on_message(message):
                                          bufsize=1)
                 except Exception as e:
                     error = "Error ocurred: " + str(e)
-                    errorType = "Error type: " + str((e.__class__.__name__))
+                    errorType = "Error type: " + str(e.__class__.__name__)
                     await message.channel.send(str(error))
                     await message.channel.send(str(errorType))
 
@@ -567,7 +612,7 @@ async def on_message(message):
                     len(message.content.split()) == 2
             ):
                 ip = str(message.content).split()[1]
-                com = "ping " + str(ip) + " -c 4"  # Infinite ping fix
+                com = "ping " + str(ip) + f" -{pingFlag} 4"  # Infinite ping fix
                 try:
                     p = subprocess.Popen(com, stdout=subprocess.PIPE,
                                          shell=True, cwd=os.getcwd(),
@@ -575,7 +620,7 @@ async def on_message(message):
                     for line in iter(p.stdout.readline, b''):
                         try:
                             await message.channel.send(line.decode('utf-8'))
-                        except:
+                        except Exception:
                             pass
                     p.communicate()
                     if p.returncode != 0:
@@ -583,12 +628,14 @@ async def on_message(message):
                                                    "service not known")
                 except Exception as e:
                     error = "Error ocurred: " + str(e)
-                    errorType = "Error type: " + str((e.__class__.__name__))
+                    errorType = "Error type: " + str(e.__class__.__name__)
                     await message.channel.send(str(error))
                     await message.channel.send(str(errorType))
 
             else:
                 try:
+                    if message.content.lower == 'yes':
+                        raise FileNotFoundError
                     p = subprocess.Popen(message.content,
                                          stdout=subprocess.PIPE,
                                          shell=True, cwd=os.getcwd(),
@@ -601,7 +648,7 @@ async def on_message(message):
                         except Exception as e:
                             try:
                                 lines.append(str(e))
-                            except:
+                            except Exception:
                                 pass
                     if len(lines) > 2:
                         lineString = "\0".join(lines)
@@ -623,7 +670,7 @@ async def on_message(message):
                         for line in lines:
                             try:
                                 await message.channel.send(line)
-                            except:
+                            except Exception:
                                 pass
 
                     for line in iter(p.stdout.readline, b''):
@@ -638,7 +685,7 @@ async def on_message(message):
                                     line.decode('utf-8'))
                             except Exception as e:
                                 await message.channel.send(str(e))
-                    error = p.communicate()
+                    p.communicate()
                     p.wait()
                     if p.returncode != 0:
                         pass
